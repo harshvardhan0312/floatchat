@@ -8,12 +8,152 @@ import plotly.express as px
 import streamlit as st
 
 
+# ---------------------------------------------------------------------------
+# Page configuration
+# ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="FloatChat",
+    page_title="FloatChat | Ocean Data Explorer",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ---------------------------------------------------------------------------
+# Professional ocean-themed styling
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    /* Overall application */
+    .stApp {
+        background: #f5f9fc;
+    }
+
+    /* Keep the UI clean and technical */
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 3rem;
+        max-width: 1450px;
+    }
+
+    /* Header banner */
+    .floatchat-banner {
+        background: linear-gradient(110deg, #083b5c 0%, #0b5f7a 55%, #137c8b 100%);
+        border-radius: 14px;
+        padding: 24px 30px 22px 30px;
+        margin-bottom: 22px;
+        border: 1px solid rgba(255,255,255,0.12);
+        box-shadow: 0 5px 18px rgba(8, 59, 92, 0.12);
+    }
+
+    .floatchat-title {
+        color: white;
+        font-size: 2.25rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        margin: 0;
+    }
+
+    .floatchat-subtitle {
+        color: #d8edf4;
+        font-size: 0.98rem;
+        margin-top: 6px;
+        margin-bottom: 0;
+    }
+
+    .banner-badge {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(255,255,255,0.18);
+        color: #e8f7fa;
+        font-size: 0.78rem;
+        letter-spacing: 0.2px;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background: #eef5f8;
+        border-right: 1px solid #d8e6ec;
+    }
+
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: #083b5c;
+    }
+
+    /* Dataset metric cards */
+    .dataset-card {
+        background: white;
+        border: 1px solid #dbe8ee;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin: 7px 0;
+    }
+
+    .dataset-label {
+        color: #607986;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .dataset-value {
+        color: #083b5c;
+        font-size: 1.35rem;
+        font-weight: 650;
+        margin-top: 2px;
+    }
+
+    /* Section headings */
+    .section-title {
+        color: #083b5c;
+        font-size: 1.05rem;
+        font-weight: 650;
+        margin: 18px 0 8px 0;
+        border-left: 3px solid #16879a;
+        padding-left: 9px;
+    }
+
+    /* Chat messages */
+    [data-testid="stChatMessage"] {
+        border-radius: 10px;
+    }
+
+    /* Tables */
+    [data-testid="stDataFrame"] {
+        border: 1px solid #dbe8ee;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    /* Chat input */
+    [data-testid="stChatInput"] {
+        border-color: #c9dce4;
+    }
+
+    /* Buttons / radio controls */
+    .stRadio label {
+        color: #315565;
+        font-weight: 500;
+    }
+
+    /* Footer */
+    .floatchat-footer {
+        margin-top: 36px;
+        padding-top: 14px;
+        border-top: 1px solid #d8e6ec;
+        color: #718792;
+        font-size: 0.78rem;
+        text-align: center;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 DATA_PATH = Path(__file__).parent / "ocean_data.csv"
 REQUIRED_COLUMNS = [
@@ -27,7 +167,6 @@ REQUIRED_COLUMNS = [
 ]
 
 # A small, transparent lookup keeps the app local and avoids an external geocoding API.
-# Coordinates are used to find floats within CITY_RADIUS_KM of a requested city.
 CITY_COORDINATES = {
     "chennai": (13.0827, 80.2707),
     "mumbai": (19.0760, 72.8777),
@@ -54,6 +193,7 @@ def load_data() -> pd.DataFrame:
 
     data = data[REQUIRED_COLUMNS].copy()
     data["date"] = pd.to_datetime(data["date"], errors="coerce")
+
     numeric_columns = [
         "latitude",
         "longitude",
@@ -71,7 +211,11 @@ def load_data() -> pd.DataFrame:
 def parse_question(question: str) -> tuple[str | None, int | None]:
     normalized = question.casefold()
     city = next(
-        (name for name in sorted(CITY_COORDINATES, key=len, reverse=True) if name in normalized),
+        (
+            name
+            for name in sorted(CITY_COORDINATES, key=len, reverse=True)
+            if name in normalized
+        ),
         None,
     )
     year_match = re.search(r"\b(19|20)\d{2}\b", normalized)
@@ -92,56 +236,101 @@ def haversine_km(
     lat2 = radians(target_latitude)
     delta_lat = lat2 - lat1
     delta_lon = longitudes.map(radians) - radians(target_longitude)
+
     haversine = (
         delta_lat.map(sin).pow(2)
         + lat1.map(cos) * cos(lat2) * delta_lon.map(sin).pow(2)
     )
-    # Floating-point rounding can make a theoretically valid value exceed 1 by
-    # a tiny amount, which would otherwise make asin/sqrt raise an error.
+
     return haversine.clip(lower=0, upper=1).map(
         lambda value: 2 * 6371 * asin(sqrt(value))
     )
 
 
-def filter_data(data: pd.DataFrame, city: str | None, year: int | None) -> pd.DataFrame:
+def filter_data(
+    data: pd.DataFrame,
+    city: str | None,
+    year: int | None,
+) -> pd.DataFrame:
     filtered = data.copy()
+
     if year is not None:
         filtered = filtered[filtered["date"].dt.year == year]
+
     if city is not None:
         latitude, longitude = CITY_COORDINATES[city]
-        distances = haversine_km(filtered["latitude"], filtered["longitude"], latitude, longitude)
+        distances = haversine_km(
+            filtered["latitude"],
+            filtered["longitude"],
+            latitude,
+            longitude,
+        )
         filtered = filtered[distances <= CITY_RADIUS_KM].copy()
         filtered["distance_km"] = distances[distances <= CITY_RADIUS_KM].round(1)
+
     return filtered.sort_values("date").reset_index(drop=True)
 
 
-def render_results(results: pd.DataFrame, city: str | None, year: int | None) -> None:
-    st.markdown("#### Matching observations")
-    display_columns = REQUIRED_COLUMNS + (["distance_km"] if "distance_km" in results else [])
+def render_results(
+    results: pd.DataFrame,
+    city: str | None,
+    year: int | None,
+    result_key: str,
+) -> None:
+    st.markdown('<div class="section-title">Matching observations</div>', unsafe_allow_html=True)
+
+    display_columns = REQUIRED_COLUMNS + (
+        ["distance_km"] if "distance_km" in results else []
+    )
+
     st.dataframe(
         results[display_columns],
         use_container_width=True,
         hide_index=True,
         column_config={
             "date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
-            "temperature_celsius": st.column_config.NumberColumn("Temperature", format="%.1f °C"),
-            "salinity_psu": st.column_config.NumberColumn("Salinity", format="%.2f PSU"),
+            "temperature_celsius": st.column_config.NumberColumn(
+                "Temperature", format="%.1f °C"
+            ),
+            "salinity_psu": st.column_config.NumberColumn(
+                "Salinity", format="%.2f PSU"
+            ),
             "depth_meters": st.column_config.NumberColumn("Depth", format="%.0f m"),
-            "distance_km": st.column_config.NumberColumn("Distance", format="%.1f km"),
+            "distance_km": st.column_config.NumberColumn(
+                "Distance", format="%.1f km"
+            ),
         },
     )
 
     left, right = st.columns([1.35, 1])
+
     with left:
+        st.markdown(
+            '<div class="section-title">Observation trend</div>',
+            unsafe_allow_html=True,
+        )
+
         metric = st.radio(
-            "Trend to plot",
+            "Select measurement",
             ["Temperature", "Salinity"],
             horizontal=True,
-            key=f"metric_{id(results)}"
+            key=f"metric_{result_key}",
+            label_visibility="collapsed",
         )
-        value_column = "temperature_celsius" if metric == "Temperature" else "salinity_psu"
-        y_label = "Temperature (°C)" if metric == "Temperature" else "Salinity (PSU)"
+
+        value_column = (
+            "temperature_celsius"
+            if metric == "Temperature"
+            else "salinity_psu"
+        )
+        y_label = (
+            "Temperature (°C)"
+            if metric == "Temperature"
+            else "Salinity (PSU)"
+        )
+
         chart_data = results.dropna(subset=[value_column])
+
         if chart_data.empty:
             st.info(f"No {metric.lower()} values are available for these observations.")
         else:
@@ -151,23 +340,73 @@ def render_results(results: pd.DataFrame, city: str | None, year: int | None) ->
                 y=value_column,
                 color="float_id",
                 markers=True,
-                labels={"date": "Observation date", value_column: y_label, "float_id": "Float"},
+                labels={
+                    "date": "Observation date",
+                    value_column: y_label,
+                    "float_id": "Float",
+                },
             )
-            figure.update_layout(legend_title_text="Float", margin=dict(l=0, r=0, t=20, b=0))
-            st.plotly_chart(figure, use_container_width=True)
+
+            figure.update_layout(
+                template="plotly_white",
+                height=390,
+                legend_title_text="Float",
+                margin=dict(l=10, r=10, t=15, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#315565"),
+            )
+
+            figure.update_xaxes(
+                showgrid=True,
+                gridcolor="#e3edf1",
+                zeroline=False,
+            )
+            figure.update_yaxes(
+                showgrid=True,
+                gridcolor="#e3edf1",
+                zeroline=False,
+            )
+
+            st.plotly_chart(
+                figure,
+                use_container_width=True,
+                config={"displaylogo": False},
+            )
 
     with right:
-        st.markdown("#### Float locations")
+        st.markdown(
+            '<div class="section-title">Float locations</div>',
+            unsafe_allow_html=True,
+        )
+
         st.map(
-            results.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]],
+            results.rename(
+                columns={"latitude": "lat", "longitude": "lon"}
+            )[["lat", "lon"]],
             use_container_width=True,
             zoom=4 if city else None,
         )
 
 
 def main() -> None:
-    st.title("FloatChat")
-    st.caption("Ask questions about ocean float observations using plain keywords.")
+    # -----------------------------------------------------------------------
+    # Header
+    # -----------------------------------------------------------------------
+    st.markdown(
+        """
+        <div class="floatchat-banner">
+            <div class="floatchat-title">🌊 FloatChat</div>
+            <div class="floatchat-subtitle">
+                Ocean Data Exploration &nbsp;•&nbsp; Argo Float Observations
+            </div>
+            <div class="banner-badge">
+                Data-driven ocean observation explorer
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     try:
         data = load_data()
@@ -175,64 +414,129 @@ def main() -> None:
         st.error(str(error))
         st.stop()
 
+    # -----------------------------------------------------------------------
+    # Sidebar
+    # -----------------------------------------------------------------------
     with st.sidebar:
-        st.header("Dataset")
-        st.metric("Observations", f"{len(data):,}")
-        st.metric("Active floats", data["float_id"].nunique())
-        st.caption(
-            "Try a city and year together, for example:\n\n"
-            "temperature near Chennai 2023"
-        )
-        st.divider()
-        st.markdown("**Recognized cities**")
-        st.caption(", ".join(name.title() for name in CITY_COORDINATES))
+        st.markdown("## 🌐 Dataset")
 
+        st.markdown(
+            f"""
+            <div class="dataset-card">
+                <div class="dataset-label">Observations</div>
+                <div class="dataset-value">{len(data):,}</div>
+            </div>
+
+            <div class="dataset-card">
+                <div class="dataset-label">Active floats</div>
+                <div class="dataset-value">{data["float_id"].nunique():,}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+
+        st.markdown("### 🔎 Query examples")
+        st.caption(
+            "Ask for observations using a recognized city and year."
+        )
+
+        st.code("temperature near Chennai 2023", language="text")
+        st.code("salinity near Dubai 2023", language="text")
+        st.code("temperature near Singapore 2024", language="text")
+
+        st.divider()
+
+        st.markdown("### 📍 Recognized locations")
+        st.caption(
+            ", ".join(name.title() for name in CITY_COORDINATES)
+        )
+
+        st.caption(
+            f"Search radius: {CITY_RADIUS_KM} km"
+        )
+
+    # -----------------------------------------------------------------------
+    # Chat state
+    # -----------------------------------------------------------------------
     if "messages" not in st.session_state:
         st.session_state.messages = [
             {
                 "role": "assistant",
                 "content": (
-                    "Hello. Ask me for observations by city and year, such as "
-                    "**temperature near Chennai 2023**."
+                    "Welcome to **FloatChat**. Ask for ocean observations by "
+                    "city and year, for example **temperature near Chennai 2023**."
                 ),
             }
         ]
 
-    for message in st.session_state.messages:
+    for index, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message.get("results") is not None:
-                render_results(message["results"], message.get("city"), message.get("year"))
 
-    if question := st.chat_input("Ask about a city and year…"):
+            if message.get("results") is not None:
+                render_results(
+                    message["results"],
+                    message.get("city"),
+                    message.get("year"),
+                    result_key=str(index),
+                )
+
+    # -----------------------------------------------------------------------
+    # Query handling
+    # -----------------------------------------------------------------------
+    if question := st.chat_input(
+        "Ask about a city and year…"
+    ):
         city, year = parse_question(question)
         results = filter_data(data, city, year)
-        st.session_state.messages.append({"role": "user", "content": question})
+
+        st.session_state.messages.append(
+            {"role": "user", "content": question}
+        )
 
         if city is None and year is None:
             response = (
                 "I couldn't find a recognized city or year in that question. "
                 "Try a query like **temperature near Chennai 2023**."
             )
-            st.session_state.messages.append({"role": "assistant", "content": response})
+
+            st.session_state.messages.append(
+                {"role": "assistant", "content": response}
+            )
+
         elif results.empty:
             requested_city = city.title() if city else "all locations"
             requested_year = str(year) if year else "all years"
+
             response = (
-                f"I found the keywords for **{requested_city}** and **{requested_year}**, "
-                "but there are no matching observations in the dataset."
+                f"I found the keywords for **{requested_city}** and "
+                f"**{requested_year}**, but there are no matching "
+                "observations in the dataset."
             )
-            st.session_state.messages.append({"role": "assistant", "content": response})
+
+            st.session_state.messages.append(
+                {"role": "assistant", "content": response}
+            )
+
         else:
             scope = []
+
             if city:
-                scope.append(f"within {CITY_RADIUS_KM} km of {city.title()}")
+                scope.append(
+                    f"within {CITY_RADIUS_KM} km of {city.title()}"
+                )
+
             if year:
                 scope.append(f"in {year}")
+
             response = (
                 f"I found **{len(results)} observations** "
-                f"{' '.join(scope)}. The table, trend, and map below show the matches."
+                f"{' '.join(scope)}. The table, trend, and map below "
+                "show the matching observations."
             )
+
             st.session_state.messages.append(
                 {
                     "role": "assistant",
@@ -242,7 +546,21 @@ def main() -> None:
                     "year": year,
                 }
             )
+
         st.rerun()
+
+    # -----------------------------------------------------------------------
+    # Footer
+    # -----------------------------------------------------------------------
+    st.markdown(
+        """
+        <div class="floatchat-footer">
+            FloatChat &nbsp;•&nbsp; Ocean observation prototype
+            &nbsp;•&nbsp; Argo float data exploration
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
