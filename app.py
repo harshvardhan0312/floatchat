@@ -24,129 +24,131 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Overall application */
+    /* ================================================================
+       FloatChat — restrained SIH / scientific dashboard theme
+       ================================================================ */
+
     .stApp {
-        background: #f5f9fc;
+        background: #f3f5f6;
+        color: #263840;
     }
 
-    /* Keep the UI clean and technical */
     .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 3rem;
         max-width: 1450px;
+        padding-top: 1.25rem;
+        padding-bottom: 2.5rem;
     }
 
-    /* Header banner */
+    /* Compact, dark header — no bright gradient */
     .floatchat-banner {
-        background: linear-gradient(110deg, #083b5c 0%, #0b5f7a 55%, #137c8b 100%);
-        border-radius: 14px;
-        padding: 24px 30px 22px 30px;
-        margin-bottom: 22px;
-        border: 1px solid rgba(255,255,255,0.12);
-        box-shadow: 0 5px 18px rgba(8, 59, 92, 0.12);
+        background: #203c49;
+        border: 1px solid #304f5c;
+        border-radius: 10px;
+        padding: 20px 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(30, 55, 65, 0.08);
     }
 
     .floatchat-title {
-        color: white;
-        font-size: 2.25rem;
+        color: #f4f7f8;
+        font-size: 2rem;
         font-weight: 700;
-        letter-spacing: -0.5px;
+        letter-spacing: -0.35px;
         margin: 0;
     }
 
     .floatchat-subtitle {
-        color: #d8edf4;
-        font-size: 0.98rem;
-        margin-top: 6px;
+        color: #c8d5d9;
+        font-size: 0.9rem;
+        margin-top: 5px;
         margin-bottom: 0;
     }
 
     .banner-badge {
         display: inline-block;
-        margin-top: 14px;
-        padding: 5px 10px;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.10);
-        border: 1px solid rgba(255,255,255,0.18);
-        color: #e8f7fa;
-        font-size: 0.78rem;
-        letter-spacing: 0.2px;
+        margin-top: 11px;
+        padding: 4px 9px;
+        border-radius: 5px;
+        background: #294955;
+        border: 1px solid #41606b;
+        color: #d5e1e4;
+        font-size: 0.72rem;
     }
 
     /* Sidebar */
     section[data-testid="stSidebar"] {
-        background: #eef5f8;
-        border-right: 1px solid #d8e6ec;
+        background: #e9eef0;
+        border-right: 1px solid #d3dde1;
     }
 
     section[data-testid="stSidebar"] h2,
     section[data-testid="stSidebar"] h3 {
-        color: #083b5c;
+        color: #294956;
     }
 
-    /* Dataset metric cards */
+    /* Small neutral metric cards */
     .dataset-card {
-        background: white;
-        border: 1px solid #dbe8ee;
-        border-radius: 10px;
-        padding: 12px 14px;
+        background: #f8fafb;
+        border: 1px solid #d6e0e3;
+        border-radius: 8px;
+        padding: 10px 12px;
         margin: 7px 0;
     }
 
     .dataset-label {
-        color: #607986;
-        font-size: 0.76rem;
+        color: #667980;
+        font-size: 0.70rem;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.45px;
     }
 
     .dataset-value {
-        color: #083b5c;
-        font-size: 1.35rem;
+        color: #294956;
+        font-size: 1.25rem;
         font-weight: 650;
         margin-top: 2px;
     }
 
-    /* Section headings */
+    /* Section labels */
     .section-title {
-        color: #083b5c;
-        font-size: 1.05rem;
+        color: #294956;
+        font-size: 0.98rem;
         font-weight: 650;
-        margin: 18px 0 8px 0;
-        border-left: 3px solid #16879a;
-        padding-left: 9px;
+        margin: 16px 0 8px 0;
+        padding-left: 8px;
+        border-left: 3px solid #607d87;
     }
 
-    /* Chat messages */
+    /* Chat */
     [data-testid="stChatMessage"] {
-        border-radius: 10px;
+        border-radius: 8px;
     }
 
-    /* Tables */
+    /* Dataframe */
     [data-testid="stDataFrame"] {
-        border: 1px solid #dbe8ee;
-        border-radius: 10px;
+        border: 1px solid #d6e0e3;
+        border-radius: 8px;
         overflow: hidden;
+        background: #ffffff;
     }
 
-    /* Chat input */
+    /* Inputs */
     [data-testid="stChatInput"] {
-        border-color: #c9dce4;
+        border-color: #cbd7db;
     }
 
-    /* Buttons / radio controls */
     .stRadio label {
-        color: #315565;
+        color: #405a63;
         font-weight: 500;
     }
 
     /* Footer */
     .floatchat-footer {
-        margin-top: 36px;
-        padding-top: 14px;
-        border-top: 1px solid #d8e6ec;
-        color: #718792;
-        font-size: 0.78rem;
+        margin-top: 30px;
+        padding-top: 12px;
+        border-top: 1px solid #d3dde1;
+        color: #77888e;
+        font-size: 0.74rem;
         text-align: center;
     }
     </style>
@@ -352,19 +354,31 @@ def render_results(
                 height=390,
                 legend_title_text="Float",
                 margin=dict(l=10, r=10, t=15, b=10),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#315565"),
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
+                font=dict(color="#263840", size=12),
+                colorway=[
+                    "#365b69",
+                    "#607985",
+                    "#7b8f96",
+                    "#4b6f7c",
+                    "#8b9da2",
+                ],
+                legend=dict(
+                    bgcolor="#ffffff",
+                    bordercolor="#d7e0e3",
+                    borderwidth=1,
+                ),
             )
 
             figure.update_xaxes(
                 showgrid=True,
-                gridcolor="#e3edf1",
+                gridcolor="#e1e6e8",
                 zeroline=False,
             )
             figure.update_yaxes(
                 showgrid=True,
-                gridcolor="#e3edf1",
+                gridcolor="#e1e6e8",
                 zeroline=False,
             )
 
