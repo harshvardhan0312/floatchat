@@ -137,7 +137,7 @@ def render_results(results: pd.DataFrame, city: str | None, year: int | None) ->
             "Trend to plot",
             ["Temperature", "Salinity"],
             horizontal=True,
-            key=f"metric_{len(st.session_state.messages)}",
+            key=f"metric_{id(results)}"
         )
         value_column = "temperature_celsius" if metric == "Temperature" else "salinity_psu"
         y_label = "Temperature (°C)" if metric == "Temperature" else "Salinity (PSU)"
