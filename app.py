@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -9,12 +8,75 @@ import plotly.express as px
 import streamlit as st
 
 
+# Page setup
 st.set_page_config(
-    page_title="FloatChat",
+    page_title="FloatChat | Ocean Observation Portal",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Professional Ocean Styling (Deep Slate Navy + Subdued Ocean Accents)
+CSS_THEME = """
+<style>
+    /* Primary Color Variables */
+    :root {
+        --bg-color: #0b132b;
+        --card-bg: #1c2541;
+        --text-primary: #e0e1dd;
+        --accent-teal: #48cae4;
+        --border-color: #3a506b;
+    }
+
+    /* Professional Top Banner */
+    .hero-banner {
+        background: linear-gradient(135deg, #0b132b 0%, #1c2541 60%, #1c3144 100%);
+        padding: 24px 28px;
+        border-radius: 10px;
+        border: 1px solid #3a506b;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    .hero-title {
+        color: #ffffff;
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        letter-spacing: -0.5px;
+    }
+    .hero-subtitle {
+        color: #90e0ef;
+        font-size: 0.95rem;
+        margin-top: 6px;
+        margin-bottom: 0;
+        font-weight: 400;
+    }
+
+    /* Subdued Status Badges */
+    .metric-badge {
+        background-color: #1c2541;
+        border: 1px solid #3a506b;
+        border-radius: 8px;
+        padding: 12px 16px;
+        text-align: center;
+    }
+    .metric-label {
+        font-size: 0.8rem;
+        color: #a0aec0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .metric-value {
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: #48cae4;
+    }
+</style>
+"""
+st.markdown(CSS_THEME, unsafe_allow_html=True)
 
 DATA_PATH = Path(__file__).parent / "ocean_data.csv"
 REQUIRED_COLUMNS = [
@@ -27,8 +89,7 @@ REQUIRED_COLUMNS = [
     "depth_meters",
 ]
 
-# A small, transparent lookup keeps the app local and avoids an external geocoding API.
-# Coordinates are used to find floats within CITY_RADIUS_KM of a requested city.
+# Coordinates lookup
 CITY_COORDINATES = {
     "chennai": (13.0827, 80.2707),
     "mumbai": (19.0760, 72.8777),
@@ -97,8 +158,6 @@ def haversine_km(
         delta_lat.map(sin).pow(2)
         + lat1.map(cos) * cos(lat2) * delta_lon.map(sin).pow(2)
     )
-    # Floating-point rounding can make a theoretically valid value exceed 1 by
-    # a tiny amount, which would otherwise make asin/sqrt raise an error.
     return haversine.clip(lower=0, upper=1).map(
         lambda value: 2 * 6371 * asin(sqrt(value))
     )
@@ -117,8 +176,9 @@ def filter_data(data: pd.DataFrame, city: str | None, year: int | None) -> pd.Da
 
 
 def render_results(results: pd.DataFrame, city: str | None, year: int | None) -> None:
-    st.markdown("#### Matching observations")
+    st.markdown("##### 📊 Observation Records")
     display_columns = REQUIRED_COLUMNS + (["distance_km"] if "distance_km" in results else [])
+    
     st.dataframe(
         results[display_columns],
         use_container_width=True,
@@ -135,7 +195,7 @@ def render_results(results: pd.DataFrame, city: str | None, year: int | None) ->
     left, right = st.columns([1.35, 1])
     with left:
         metric = st.radio(
-            "Trend to plot",
+            "Trend Parameter",
             ["Temperature", "Salinity"],
             horizontal=True,
             key=f"metric_{id(results)}"
@@ -143,22 +203,40 @@ def render_results(results: pd.DataFrame, city: str | None, year: int | None) ->
         value_column = "temperature_celsius" if metric == "Temperature" else "salinity_psu"
         y_label = "Temperature (°C)" if metric == "Temperature" else "Salinity (PSU)"
         chart_data = results.dropna(subset=[value_column])
+        
         if chart_data.empty:
-            st.info(f"No {metric.lower()} values are available for these observations.")
+            st.info(f"No {metric.lower()} values available for these parameters.")
         else:
+            # Professional plot theme: Low contrast dark base with readable muted lines
             figure = px.line(
                 chart_data,
                 x="date",
                 y=value_column,
                 color="float_id",
                 markers=True,
-                labels={"date": "Observation date", value_column: y_label, "float_id": "Float"},
+                labels={"date": "Observation Date", value_column: y_label, "float_id": "Float ID"},
+                template="plotly_dark",
+                color_discrete_sequence=["#48cae4", "#00b4d8", "#90e0ef", "#0077b6", "#caf0f8"]
             )
-            figure.update_layout(legend_title_text="Float", margin=dict(l=0, r=0, t=20, b=0))
+            figure.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(11,19,43,0.5)",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    title_text=""
+                ),
+                margin=dict(l=10, r=10, t=30, b=10),
+                xaxis=dict(showgrid=True, gridcolor="#1c2541"),
+                yaxis=dict(showgrid=True, gridcolor="#1c2541"),
+            )
             st.plotly_chart(figure, use_container_width=True)
 
     with right:
-        st.markdown("#### Float locations")
+        st.markdown("##### 📍 Geo-Location Map")
         st.map(
             results.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]],
             use_container_width=True,
@@ -167,8 +245,16 @@ def render_results(results: pd.DataFrame, city: str | None, year: int | None) ->
 
 
 def main() -> None:
-    st.title("FloatChat")
-    st.caption("Ask questions about ocean float observations using plain keywords.")
+    # Title Banner (Clean, Professional, Academic Header)
+    st.markdown(
+        """
+        <div class="hero-banner">
+            <h1 class="hero-title">🌊 FloatChat</h1>
+            <p class="hero-subtitle">SIH25040 Solution Prototype | Autonomous Ocean Observation Analysis Platform</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     try:
         data = load_data()
@@ -177,24 +263,28 @@ def main() -> None:
         st.stop()
 
     with st.sidebar:
-        st.header("Dataset")
-        st.metric("Observations", f"{len(data):,}")
-        st.metric("Active floats", data["float_id"].nunique())
+        st.markdown("### ⚓ Dataset Overview")
+        st.metric("Total Observations", f"{len(data):,}")
+        st.metric("Active Float Nodes", data["float_id"].nunique())
+        
+        st.divider()
+        st.markdown("**Query Syntax Guidance**")
         st.caption(
-            "Try a city and year together, for example:\n\n"
-            "temperature near Chennai 2023"
+            "Combine a target geographic node with an observation year:\n\n"
+            "• *`temperature near Chennai 2023`*\n"
+            "• *`salinity near Mumbai 2022`*"
         )
         st.divider()
-        st.markdown("**Recognized cities**")
-        st.caption(", ".join(name.title() for name in CITY_COORDINATES))
+        st.markdown("**Indexed Coastal Regions**")
+        st.caption(" • ".join(name.title() for name in CITY_COORDINATES))
 
     if "messages" not in st.session_state:
         st.session_state.messages = [
             {
                 "role": "assistant",
                 "content": (
-                    "Hello. Ask me for observations by city and year, such as "
-                    "**temperature near Chennai 2023**."
+                    "Welcome to the FloatChat analysis console. Input location and year queries "
+                    "to retrieve observation metrics (e.g., **temperature near Chennai 2023**)."
                 ),
             }
         ]
@@ -205,23 +295,23 @@ def main() -> None:
             if message.get("results") is not None:
                 render_results(message["results"], message.get("city"), message.get("year"))
 
-    if question := st.chat_input("Ask about a city and year…"):
+    if question := st.chat_input("Query float observations by location or year..."):
         city, year = parse_question(question)
         results = filter_data(data, city, year)
         st.session_state.messages.append({"role": "user", "content": question})
 
         if city is None and year is None:
             response = (
-                "I couldn't find a recognized city or year in that question. "
-                "Try a query like **temperature near Chennai 2023**."
+                "Unrecognized query scope. Please specify a valid city region or observation year. "
+                "Example: **temperature near Chennai 2023**."
             )
             st.session_state.messages.append({"role": "assistant", "content": response})
         elif results.empty:
             requested_city = city.title() if city else "all locations"
             requested_year = str(year) if year else "all years"
             response = (
-                f"I found the keywords for **{requested_city}** and **{requested_year}**, "
-                "but there are no matching observations in the dataset."
+                f"Parameters parsed for **{requested_city}** ({requested_year}), "
+                "but no matching float records were retrieved from the current dataset."
             )
             st.session_state.messages.append({"role": "assistant", "content": response})
         else:
@@ -231,8 +321,8 @@ def main() -> None:
             if year:
                 scope.append(f"in {year}")
             response = (
-                f"I found **{len(results)} observations** "
-                f"{' '.join(scope)}. The table, trend, and map below show the matches."
+                f"Retrieved **{len(results)} observation record(s)** "
+                f"{' '.join(scope)}. Data visualization provided below:"
             )
             st.session_state.messages.append(
                 {
