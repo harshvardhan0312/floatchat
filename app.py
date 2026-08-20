@@ -1,0 +1,249 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+
+
+st.set_page_config(
+    page_title="FloatChat",
+    page_icon="🌊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+DATA_PATH = Path(__file__).parent / "ocean_data.csv"
+REQUIRED_COLUMNS = [
+    "float_id",
+    "latitude",
+    "longitude",
+    "date",
+    "temperature_celsius",
+    "salinity_psu",
+    "depth_meters",
+]
+
+# A small, transparent lookup keeps the app local and avoids an external geocoding API.
+# Coordinates are used to find floats within CITY_RADIUS_KM of a requested city.
+CITY_COORDINATES = {
+    "chennai": (13.0827, 80.2707),
+    "mumbai": (19.0760, 72.8777),
+    "singapore": (1.3521, 103.8198),
+    "sydney": (-33.8688, 151.2093),
+    "colombo": (6.9271, 79.8612),
+    "dubai": (25.2048, 55.2708),
+    "cape town": (-33.9249, 18.4241),
+    "san francisco": (37.7749, -122.4194),
+}
+CITY_RADIUS_KM = 90
+
+
+@st.cache_data
+def load_data() -> pd.DataFrame:
+    """Load, validate, and normalize the ocean observations."""
+    if not DATA_PATH.exists():
+        raise FileNotFoundError(f"Could not find {DATA_PATH.name} in the app folder.")
+
+    data = pd.read_csv(DATA_PATH)
+    missing = [column for column in REQUIRED_COLUMNS if column not in data.columns]
+    if missing:
+        raise ValueError(f"Missing required CSV columns: {', '.join(missing)}")
+
+    data = data[REQUIRED_COLUMNS].copy()
+    data["date"] = pd.to_datetime(data["date"], errors="coerce")
+    numeric_columns = [
+        "latitude",
+        "longitude",
+        "temperature_celsius",
+        "salinity_psu",
+        "depth_meters",
+    ]
+    for column in numeric_columns:
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+
+    data = data.dropna(subset=["date", "latitude", "longitude"])
+    return data.sort_values("date").reset_index(drop=True)
+
+
+def parse_question(question: str) -> tuple[str | None, int | None]:
+    normalized = question.casefold()
+    city = next(
+        (name for name in sorted(CITY_COORDINATES, key=len, reverse=True) if name in normalized),
+        None,
+    )
+    year_match = re.search(r"\b(19|20)\d{2}\b", normalized)
+    year = int(year_match.group(0)) if year_match else None
+    return city, year
+
+
+def haversine_km(
+    latitudes: pd.Series,
+    longitudes: pd.Series,
+    target_latitude: float,
+    target_longitude: float,
+) -> pd.Series:
+    """Calculate approximate distance from every float to a city in kilometers."""
+    from math import asin, cos, radians, sin, sqrt
+
+    lat1 = latitudes.map(radians)
+    lat2 = radians(target_latitude)
+    delta_lat = lat2 - lat1
+    delta_lon = longitudes.map(radians) - radians(target_longitude)
+    haversine = (
+        delta_lat.map(sin).pow(2)
+        + lat1.map(cos) * cos(lat2) * delta_lon.map(sin).pow(2)
+    )
+    # Floating-point rounding can make a theoretically valid value exceed 1 by
+    # a tiny amount, which would otherwise make asin/sqrt raise an error.
+    return haversine.clip(lower=0, upper=1).map(
+        lambda value: 2 * 6371 * asin(sqrt(value))
+    )
+
+
+def filter_data(data: pd.DataFrame, city: str | None, year: int | None) -> pd.DataFrame:
+    filtered = data.copy()
+    if year is not None:
+        filtered = filtered[filtered["date"].dt.year == year]
+    if city is not None:
+        latitude, longitude = CITY_COORDINATES[city]
+        distances = haversine_km(filtered["latitude"], filtered["longitude"], latitude, longitude)
+        filtered = filtered[distances <= CITY_RADIUS_KM].copy()
+        filtered["distance_km"] = distances[distances <= CITY_RADIUS_KM].round(1)
+    return filtered.sort_values("date").reset_index(drop=True)
+
+
+def render_results(results: pd.DataFrame, city: str | None, year: int | None) -> None:
+    st.markdown("#### Matching observations")
+    display_columns = REQUIRED_COLUMNS + (["distance_km"] if "distance_km" in results else [])
+    st.dataframe(
+        results[display_columns],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
+            "temperature_celsius": st.column_config.NumberColumn("Temperature", format="%.1f °C"),
+            "salinity_psu": st.column_config.NumberColumn("Salinity", format="%.2f PSU"),
+            "depth_meters": st.column_config.NumberColumn("Depth", format="%.0f m"),
+            "distance_km": st.column_config.NumberColumn("Distance", format="%.1f km"),
+        },
+    )
+
+    left, right = st.columns([1.35, 1])
+    with left:
+        metric = st.radio(
+            "Trend to plot",
+            ["Temperature", "Salinity"],
+            horizontal=True,
+            key=f"metric_{len(st.session_state.messages)}",
+        )
+        value_column = "temperature_celsius" if metric == "Temperature" else "salinity_psu"
+        y_label = "Temperature (°C)" if metric == "Temperature" else "Salinity (PSU)"
+        chart_data = results.dropna(subset=[value_column])
+        if chart_data.empty:
+            st.info(f"No {metric.lower()} values are available for these observations.")
+        else:
+            figure = px.line(
+                chart_data,
+                x="date",
+                y=value_column,
+                color="float_id",
+                markers=True,
+                labels={"date": "Observation date", value_column: y_label, "float_id": "Float"},
+            )
+            figure.update_layout(legend_title_text="Float", margin=dict(l=0, r=0, t=20, b=0))
+            st.plotly_chart(figure, use_container_width=True)
+
+    with right:
+        st.markdown("#### Float locations")
+        st.map(
+            results.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]],
+            use_container_width=True,
+            zoom=4 if city else None,
+        )
+
+
+def main() -> None:
+    st.title("FloatChat")
+    st.caption("Ask questions about ocean float observations using plain keywords.")
+
+    try:
+        data = load_data()
+    except (FileNotFoundError, ValueError) as error:
+        st.error(str(error))
+        st.stop()
+
+    with st.sidebar:
+        st.header("Dataset")
+        st.metric("Observations", f"{len(data):,}")
+        st.metric("Active floats", data["float_id"].nunique())
+        st.caption(
+            "Try a city and year together, for example:\n\n"
+            "temperature near Chennai 2023"
+        )
+        st.divider()
+        st.markdown("**Recognized cities**")
+        st.caption(", ".join(name.title() for name in CITY_COORDINATES))
+
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {
+                "role": "assistant",
+                "content": (
+                    "Hello. Ask me for observations by city and year, such as "
+                    "**temperature near Chennai 2023**."
+                ),
+            }
+        ]
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message.get("results") is not None:
+                render_results(message["results"], message.get("city"), message.get("year"))
+
+    if question := st.chat_input("Ask about a city and year…"):
+        city, year = parse_question(question)
+        results = filter_data(data, city, year)
+        st.session_state.messages.append({"role": "user", "content": question})
+
+        if city is None and year is None:
+            response = (
+                "I couldn't find a recognized city or year in that question. "
+                "Try a query like **temperature near Chennai 2023**."
+            )
+            st.session_state.messages.append({"role": "assistant", "content": response})
+        elif results.empty:
+            requested_city = city.title() if city else "all locations"
+            requested_year = str(year) if year else "all years"
+            response = (
+                f"I found the keywords for **{requested_city}** and **{requested_year}**, "
+                "but there are no matching observations in the dataset."
+            )
+            st.session_state.messages.append({"role": "assistant", "content": response})
+        else:
+            scope = []
+            if city:
+                scope.append(f"within {CITY_RADIUS_KM} km of {city.title()}")
+            if year:
+                scope.append(f"in {year}")
+            response = (
+                f"I found **{len(results)} observations** "
+                f"{' '.join(scope)}. The table, trend, and map below show the matches."
+            )
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                    "results": results,
+                    "city": city,
+                    "year": year,
+                }
+            )
+        st.rerun()
+
+
+if __name__ == "__main__":
+    main()
